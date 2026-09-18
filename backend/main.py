@@ -1,4 +1,10 @@
 from pathlib import Path
+
+from fastapi import HTTPException
+
+from services.dataset_service import load_dataset, get_basic_info, get_dataset_profile
+
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -94,3 +100,31 @@ async def upload_dataset(file: UploadFile = File(...)):
         "file_type": file_extension,
         "file_size_bytes": len(file_content),
     }
+@app.get("/dataset/{dataset_id}")
+def get_dataset_info(dataset_id: str):
+    matching_files = list(UPLOAD_DIR.glob(f"{dataset_id}.*"))
+
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found."
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        df = load_dataset(file_path)
+        profile = get_dataset_profile(df)
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            **profile,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not process dataset: {error}"
+        )
+
