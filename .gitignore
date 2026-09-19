@@ -25,3 +25,4 @@ Thumbs.db
 
 # Uploaded datasets
 backend/uploads/*
+__pycache__/

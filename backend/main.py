@@ -4,6 +4,17 @@ from fastapi import HTTPException
 
 from services.dataset_service import load_dataset, get_basic_info, get_dataset_profile
 
+from services.eda_service import get_eda_summary
+
+from services.findings_service import generate_findings
+
+from services.target_service import detect_target
+
+from services.preprocessing_service import (
+    prepare_dataset,
+    get_preprocessing_summary,
+)
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -127,4 +138,151 @@ def get_dataset_info(dataset_id: str):
             status_code=500,
             detail=f"Could not process dataset: {error}"
         )
+@app.get("/dataset/{dataset_id}/eda")
+def get_dataset_eda(dataset_id: str):
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
 
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        df = load_dataset(file_path)
+
+        eda = get_eda_summary(df)
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            **eda,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not generate EDA: {error}",
+        )
+@app.get("/dataset/{dataset_id}/findings")
+def get_dataset_findings(dataset_id: str):
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
+
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        df = load_dataset(file_path)
+
+        profile = get_dataset_profile(df)
+
+        eda = get_eda_summary(df)
+
+        findings = generate_findings(
+            df,
+            profile,
+            eda,
+        )
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            "findings": findings,
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not generate findings: {error}",
+        )
+@app.get("/dataset/{dataset_id}/target")
+def get_dataset_target(dataset_id: str):
+
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
+
+    if not matching_files:
+
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+
+        df = load_dataset(file_path)
+
+        target_result = detect_target(df)
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            **target_result,
+        }
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not detect target: {error}",
+        )
+@app.get("/dataset/{dataset_id}/preprocess")
+def preprocess_dataset(
+    dataset_id: str,
+    target: str,
+):
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
+
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        df = load_dataset(file_path)
+
+        result = prepare_dataset(
+            df=df,
+            target_column=target,
+        )
+
+        summary = get_preprocessing_summary(
+            result
+        )
+
+        return {
+            "dataset_id": dataset_id,
+            "target": target,
+            **summary,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not preprocess dataset: {error}",
+        )
