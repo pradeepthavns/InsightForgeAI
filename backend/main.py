@@ -15,6 +15,10 @@ from services.preprocessing_service import (
     get_preprocessing_summary,
 )
 
+from services.automl_service import (
+    run_classification_automl,
+)
+
 from pathlib import Path
 from uuid import uuid4
 
@@ -285,4 +289,60 @@ def preprocess_dataset(
         raise HTTPException(
             status_code=500,
             detail=f"Could not preprocess dataset: {error}",
+        )
+@app.get("/dataset/{dataset_id}/automl")
+def run_dataset_automl(
+    dataset_id: str,
+    target: str,
+):
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
+
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        # Load dataset
+        df = load_dataset(file_path)
+
+        # Prepare dataset
+        preprocessing_result = prepare_dataset(
+            df=df,
+            target_column=target,
+        )
+
+        # Run AutoML
+        automl_result = run_classification_automl(
+            X_train=preprocessing_result["X_train_processed"],
+            X_test=preprocessing_result["X_test_processed"],
+            y_train=preprocessing_result["y_train"],
+            y_test=preprocessing_result["y_test"],
+        )
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            "target": target,
+            "preprocessing": get_preprocessing_summary(
+                preprocessing_result
+            ),
+            "automl": automl_result,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not run AutoML: {error}",
         )
