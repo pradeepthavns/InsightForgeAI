@@ -1,5 +1,5 @@
-# InsightForgeAI
-
+# InsightForgeAI.       
+Status: In Progress
 > An automated Exploratory Data Analysis (EDA) and AutoML platform that transforms raw datasets into actionable insights and machine learning results.
 
 ## 📌 Overview
