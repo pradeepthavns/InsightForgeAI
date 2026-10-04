@@ -25,6 +25,11 @@ from uuid import uuid4
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
+from services.ai_insights_service import (
+    build_ai_context,
+    generate_ai_insights,
+)
+
 
 # Create the uploads directory
 UPLOAD_DIR = Path("uploads")
@@ -345,4 +350,154 @@ def run_dataset_automl(
         raise HTTPException(
             status_code=500,
             detail=f"Could not run AutoML: {error}",
+        )
+@app.get("/dataset/{dataset_id}/ai-context")
+def get_ai_context(dataset_id: str):
+    """
+    Generate structured context that can later
+    be provided to an AI model.
+    """
+
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
+
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        # -------------------------------------------------
+        # Load dataset
+        # -------------------------------------------------
+
+        df = load_dataset(file_path)
+
+
+        # -------------------------------------------------
+        # Generate dataset profile
+        # -------------------------------------------------
+
+        profile = get_dataset_profile(df)
+
+
+        # -------------------------------------------------
+        # Generate EDA
+        # -------------------------------------------------
+
+        eda = get_eda_summary(df)
+
+
+        # -------------------------------------------------
+        # Generate automated findings
+        # -------------------------------------------------
+
+        findings = generate_findings(
+            df=df,
+            profile=profile,
+            eda=eda,
+        )
+
+
+        # -------------------------------------------------
+        # Detect target
+        # -------------------------------------------------
+
+        target_detection = detect_target(df)
+
+
+        # -------------------------------------------------
+        # Build AI context
+        # -------------------------------------------------
+
+        ai_context = build_ai_context(
+            df=df,
+            profile=profile,
+            eda=eda,
+            findings=findings,
+            target_detection=target_detection,
+        )
+
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            "ai_context": ai_context,
+        }
+
+
+    except Exception as error:
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not generate AI context: {error}",
+        )
+@app.get("/dataset/{dataset_id}/ai-insights")
+def get_ai_insights(dataset_id: str):
+    matching_files = list(
+        UPLOAD_DIR.glob(f"{dataset_id}.*")
+    )
+
+    if not matching_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset not found.",
+        )
+
+    file_path = matching_files[0]
+
+    try:
+        # Load dataset
+        df = load_dataset(file_path)
+
+        # Generate dataset profile
+        profile = get_dataset_profile(df)
+
+        # Generate EDA
+        eda = get_eda_summary(df)
+
+        # Generate automated findings
+        findings = generate_findings(
+            df=df,
+            profile=profile,
+            eda=eda,
+        )
+
+        # Detect target
+        target_detection = detect_target(df)
+
+        # Build structured AI context
+        ai_context = build_ai_context(
+            df=df,
+            profile=profile,
+            eda=eda,
+            findings=findings,
+            target_detection=target_detection,
+        )
+
+        # Send context to OpenAI
+        insights = generate_ai_insights(
+            ai_context=ai_context,
+        )
+
+        return {
+            "dataset_id": dataset_id,
+            "filename": file_path.name,
+            "insights": insights,
+        }
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not generate AI insights: {error}",
         )

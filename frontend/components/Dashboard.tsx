@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
+  Legend,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -16,32 +20,26 @@ import {
 
 const API_URL = "http://127.0.0.1:8000";
 
-
-// ============================================================
-// TYPES
-// ============================================================
+/* ========================================================= */
+/* TYPES */
+/* ========================================================= */
 
 type DatasetProfile = {
   dataset_id: string;
   filename: string;
-
   rows: number;
   columns: number;
-
   column_names: string[];
-
   data_types: Record<string, string>;
 
   missing_values: Record<string, number>;
   missing_percentages: Record<string, number>;
-
   total_missing_values: number;
 
   duplicate_rows: number;
   duplicate_percentage: number;
 
   constant_columns: string[];
-
   id_like_columns: string[];
 
   outlier_counts: Record<string, number>;
@@ -50,10 +48,8 @@ type DatasetProfile = {
   data_quality_score: number;
 
   unique_values: Record<string, number>;
-
   memory_usage_bytes: number;
 };
-
 
 type NumericStatistic = {
   count: number;
@@ -66,18 +62,15 @@ type NumericStatistic = {
   q3: number;
 };
 
-
 type CategoricalValue = {
   value: string;
   count: number;
 };
 
-
 type CategoricalStatistic = {
   unique_values: number;
   top_values: CategoricalValue[];
 };
-
 
 type EDAData = {
   dataset_id: string;
@@ -102,20 +95,11 @@ type EDAData = {
   };
 };
 
-
 type Finding = {
-  type:
-    | "critical"
-    | "warning"
-    | "info"
-    | "positive"
-    | "negative";
-
+  type: string;
   title: string;
-
   message: string;
 };
-
 
 type TargetCandidate = {
   column: string;
@@ -126,89 +110,63 @@ type TargetCandidate = {
   missing_percentage: number;
 };
 
-
 type TargetDetection = {
   recommended_target: string | null;
-
   problem_type: string;
-
   confidence: string;
-
   reason: string;
-
   candidates: TargetCandidate[];
 };
 
-
 type PreprocessingSummary = {
   problem_type: string;
-
   original_rows: number;
-
   train_rows: number;
-
   test_rows: number;
-
   numeric_columns: string[];
-
   categorical_columns: string[];
-
   processed_features: number;
-
   feature_names: string[];
-
   steps: string[];
 };
 
-
 type AutoMLResult = {
   model: string;
-
   accuracy: number;
-
   precision: number;
-
   recall: number;
-
   f1_score: number;
 };
 
-
 type AutoMLResponse = {
-  problem_type: string;
-
-  models_tested: number;
-
-  results: AutoMLResult[];
-};
-
-
-type AutoMLData = {
   dataset_id: string;
-
   filename: string;
-
   target: string;
-
   preprocessing: PreprocessingSummary;
-
-  automl: AutoMLResponse;
+  automl: {
+    problem_type: string;
+    models_tested: number;
+    results: AutoMLResult[];
+  };
 };
 
+type AIInsightsResponse = {
+  dataset_id: string;
+  filename: string;
+  insights: string;
+};
 
 type DashboardProps = {
   datasetId: string;
 };
 
-
-// ============================================================
-// MAIN DASHBOARD
-// ============================================================
+/* ========================================================= */
+/* MAIN DASHBOARD */
+/* ========================================================= */
 
 export default function Dashboard({
   datasetId,
 }: DashboardProps) {
-
   const [profile, setProfile] =
     useState<DatasetProfile | null>(null);
 
@@ -228,7 +186,10 @@ export default function Dashboard({
     useState<PreprocessingSummary | null>(null);
 
   const [automlData, setAutomlData] =
-    useState<AutoMLData | null>(null);
+    useState<AutoMLResponse | null>(null);
+
+  const [aiInsights, setAiInsights] =
+    useState<string>("");
 
   const [isLoading, setIsLoading] =
     useState(true);
@@ -239,23 +200,25 @@ export default function Dashboard({
   const [isRunningAutoML, setIsRunningAutoML] =
     useState(false);
 
+  const [isLoadingAI, setIsLoadingAI] =
+    useState(false);
+
   const [error, setError] =
     useState("");
 
   const [automlError, setAutomlError] =
     useState("");
 
+  const [aiError, setAiError] =
+    useState("");
 
-  // ============================================================
-  // FETCH DASHBOARD DATA
-  // ============================================================
+  /* ========================================================= */
+  /* INITIAL DASHBOARD LOAD */
+  /* ========================================================= */
 
   useEffect(() => {
-
-    async function loadDashboard() {
-
+    async function fetchDashboardData() {
       try {
-
         setIsLoading(true);
         setError("");
 
@@ -282,34 +245,16 @@ export default function Dashboard({
           ),
         ]);
 
-
-        if (!profileResponse.ok) {
+        if (
+          !profileResponse.ok ||
+          !edaResponse.ok ||
+          !findingsResponse.ok ||
+          !targetResponse.ok
+        ) {
           throw new Error(
-            "Could not load dataset profile."
+            "Could not load dashboard data."
           );
         }
-
-
-        if (!edaResponse.ok) {
-          throw new Error(
-            "Could not load EDA information."
-          );
-        }
-
-
-        if (!findingsResponse.ok) {
-          throw new Error(
-            "Could not load automated findings."
-          );
-        }
-
-
-        if (!targetResponse.ok) {
-          throw new Error(
-            "Could not detect target column."
-          );
-        }
-
 
         const profileData =
           await profileResponse.json();
@@ -323,19 +268,14 @@ export default function Dashboard({
         const targetData =
           await targetResponse.json();
 
-
         setProfile(profileData);
-
         setEda(edaData);
 
         setFindings(
-          findingsData.findings ?? []
+          findingsData.findings || []
         );
 
-        setTargetDetection(
-          targetData
-        );
-
+        setTargetDetection(targetData);
 
         if (
           targetData.recommended_target
@@ -344,217 +284,215 @@ export default function Dashboard({
             targetData.recommended_target
           );
         }
-
       } catch (err) {
+        console.error(err);
 
         setError(
-          err instanceof Error
-            ? err.message
-            : "Something went wrong."
+          "Failed to load dashboard data."
         );
-
       } finally {
-
         setIsLoading(false);
-
       }
     }
 
-
-    loadDashboard();
-
+    fetchDashboardData();
   }, [datasetId]);
 
-
-  // ============================================================
-  // PREPARE DATASET
-  // ============================================================
+  /* ========================================================= */
+  /* PREPARE DATASET */
+  /* ========================================================= */
 
   async function handlePrepareDataset() {
-
     if (!selectedTarget) {
       return;
     }
 
     try {
-
       setIsPreparing(true);
-
       setError("");
 
-      const response =
-        await fetch(
-          `${API_URL}/dataset/${datasetId}/preprocess?target=${encodeURIComponent(
-            selectedTarget
-          )}`
-        );
+      const response = await fetch(
+        `${API_URL}/dataset/${datasetId}/preprocess?target=${encodeURIComponent(
+          selectedTarget
+        )}`
+      );
 
-
-      const data =
-        await response.json();
-
+      const data = await response.json();
 
       if (!response.ok) {
-
         throw new Error(
           data.detail ||
             "Could not prepare dataset."
         );
-
       }
 
-
-      setPreprocessing(data);
-
+      setPreprocessing(
+        data.preprocessing
+      );
     } catch (err) {
+      console.error(err);
 
       setError(
         err instanceof Error
           ? err.message
           : "Could not prepare dataset."
       );
-
     } finally {
-
       setIsPreparing(false);
-
     }
   }
 
-
-  // ============================================================
-  // RUN AUTOML
-  // ============================================================
+  /* ========================================================= */
+  /* RUN AUTOML */
+  /* ========================================================= */
 
   async function handleRunAutoML() {
-
     if (!selectedTarget) {
       return;
     }
 
     try {
-
       setIsRunningAutoML(true);
-
       setAutomlError("");
 
-      const response =
-        await fetch(
-          `${API_URL}/dataset/${datasetId}/automl?target=${encodeURIComponent(
-            selectedTarget
-          )}`
-        );
-
+      const response = await fetch(
+        `${API_URL}/dataset/${datasetId}/automl?target=${encodeURIComponent(
+          selectedTarget
+        )}`
+      );
 
       const data =
         await response.json();
 
-
       if (!response.ok) {
-
         throw new Error(
           data.detail ||
             "Could not run AutoML."
         );
-
       }
-
 
       setAutomlData(data);
 
       setPreprocessing(
         data.preprocessing
       );
-
     } catch (err) {
+      console.error(err);
 
       setAutomlError(
         err instanceof Error
           ? err.message
           : "Could not run AutoML."
       );
-
     } finally {
-
       setIsRunningAutoML(false);
-
     }
   }
 
+  /* ========================================================= */
+  /* LOAD AI INSIGHTS */
+  /* ========================================================= */
 
-  // ============================================================
-  // LOADING STATE
-  // ============================================================
+  async function handleLoadAIInsights() {
+    try {
+      setIsLoadingAI(true);
+      setAiError("");
+
+      const response = await fetch(
+        `${API_URL}/dataset/${datasetId}/ai-insights`
+      );
+
+      const data =
+        (await response.json()) as
+          | AIInsightsResponse
+          | { detail?: string };
+
+      if (!response.ok) {
+        throw new Error(
+          "detail" in data && data.detail
+            ? data.detail
+            : "Could not generate AI insights."
+        );
+      }
+
+      setAiInsights(
+        (data as AIInsightsResponse).insights
+      );
+    } catch (err) {
+      console.error(err);
+
+      setAiError(
+        err instanceof Error
+          ? err.message
+          : "Could not generate AI insights."
+      );
+    } finally {
+      setIsLoadingAI(false);
+    }
+  }
+
+  /* ========================================================= */
+  /* LOADING STATE */
+  /* ========================================================= */
 
   if (isLoading) {
-
     return (
-      <div className="flex min-h-[400px] items-center justify-center">
-
+      <div className="flex min-h-[60vh] items-center justify-center">
         <div className="text-center">
+          <div className="mb-4 text-4xl">
+            ⏳
+          </div>
 
-          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-muted border-t-primary" />
+          <h2 className="text-xl font-semibold">
+            Loading Dashboard...
+          </h2>
 
-          <p className="text-muted">
-            Loading dashboard...
+          <p className="mt-2 text-muted">
+            Analyzing your dataset.
           </p>
-
         </div>
-
       </div>
     );
   }
 
+  /* ========================================================= */
+  /* ERROR STATE */
+  /* ========================================================= */
 
-  // ============================================================
-  // ERROR STATE
-  // ============================================================
-
-  if (error && !profile) {
-
+  if (error) {
     return (
-      <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-8 text-center">
-
-        <h2 className="text-xl font-semibold text-red-500">
-          Unable to Load Dashboard
+      <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
+        <h2 className="text-xl font-bold text-red-700">
+          Something went wrong
         </h2>
 
-        <p className="mt-2 text-muted">
+        <p className="mt-2 text-red-600">
           {error}
         </p>
-
       </div>
     );
   }
-
 
   if (!profile || !eda) {
-
     return (
-      <div className="rounded-2xl border border-border bg-card p-8 text-center">
-
-        <h2 className="text-xl font-semibold">
-          No Dashboard Data
+      <div className="rounded-xl border border-border bg-card p-8 text-center">
+        <h2 className="text-xl font-bold">
+          No dataset information found
         </h2>
-
-        <p className="mt-2 text-muted">
-          Dataset information could not be loaded.
-        </p>
-
       </div>
     );
   }
 
+  /* ========================================================= */
+  /* PREPARE CHART DATA */
+  /* ========================================================= */
 
-  // ============================================================
-  // MISSING VALUES
-  // ============================================================
+  const categoricalCharts =
+    eda.categorical_columns.slice(0, 4);
 
-  const missingValues =
-    Object.entries(
-      profile.missing_percentages
-    );
-
+  const missingValues = Object.entries(
+    profile.missing_percentages
+  );
 
   const maxMissingPercentage =
     Math.max(
@@ -565,176 +503,47 @@ export default function Dashboard({
       0
     );
 
-
-  // ============================================================
-  // CORRELATION HEATMAP HELPERS
-  // ============================================================
-
-  function getCorrelationColor(
-    value: number
-  ) {
-
-    if (value >= 0) {
-
-      const intensity =
-        Math.min(
-          Math.abs(value),
-          1
-        );
-
-      return `rgba(34, 197, 94, ${0.12 + intensity * 0.75})`;
-
-    }
-
-    const intensity =
-      Math.min(
-        Math.abs(value),
-        1
-      );
-
-    return `rgba(239, 68, 68, ${0.12 + intensity * 0.75})`;
-  }
-
-
-  function getCorrelationTextColor(
-    value: number
-  ) {
-
-    return Math.abs(value) >= 0.55
-      ? "white"
-      : "inherit";
-  }
-
-
-  // ============================================================
-  // CHART DATA
-  // ============================================================
-
-  const categoricalChartData =
-    eda.categorical_columns
-      .slice(0, 6)
-      .map((column) => {
-
-        const statistics =
-          eda.categorical_statistics[
-            column
-          ];
-
-        const first =
-          statistics?.top_values?.[0];
-
-        return {
-          column,
-          count:
-            first?.count ?? 0,
-        };
-      });
-
-
-  const numericRangeData =
-    eda.numeric_columns
-      .slice(0, 8)
-      .map((column) => {
-
-        const statistics =
-          eda.numeric_statistics[
-            column
-          ];
-
-        return {
-          column,
-          min:
-            statistics?.min ?? 0,
-          max:
-            statistics?.max ?? 0,
-          mean:
-            statistics?.mean ?? 0,
-        };
-      });
-
-
-  // ============================================================
-  // RENDER
-  // ============================================================
+  /* ========================================================= */
+  /* RENDER */
+  /* ========================================================= */
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
 
-      {/* ======================================================
-          HEADER
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* HEADER */}
+      {/* ===================================================== */}
 
       <div>
+        <p className="text-sm font-medium text-muted">
+          InsightForgeAI Dashboard
+        </p>
 
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <h1 className="mt-2 text-3xl font-bold tracking-tight">
+          {profile.filename}
+        </h1>
 
-          <div>
-
-            <p className="text-sm font-medium text-primary">
-              INSIGHTFORGEAI DASHBOARD
-            </p>
-
-            <h1 className="mt-2 text-3xl font-bold tracking-tight md:text-4xl">
-              {profile.filename}
-            </h1>
-
-            <p className="mt-2 text-muted">
-              Automated data analysis, quality assessment,
-              EDA and machine-learning preparation.
-            </p>
-
-          </div>
-
-
-          <div className="rounded-xl border border-border bg-card px-4 py-3">
-
-            <p className="text-xs text-muted">
-              Dataset ID
-            </p>
-
-            <p className="mt-1 max-w-[260px] truncate font-mono text-xs">
-              {profile.dataset_id}
-            </p>
-
-          </div>
-
-        </div>
-
+        <p className="mt-2 text-muted">
+          Automated dataset profiling,
+          data quality analysis and EDA
+        </p>
       </div>
 
 
-      {/* ======================================================
-          GLOBAL ERROR
-      ====================================================== */}
-
-      {error && (
-
-        <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-500">
-
-          {error}
-
-        </div>
-
-      )}
-
-
-      {/* ======================================================
-          DATASET OVERVIEW
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* DATASET OVERVIEW */}
+      {/* ===================================================== */}
 
       <section>
-
-        <SectionTitle
-          title="Dataset Overview"
-          description="A high-level summary of the uploaded dataset."
-        />
-
+        <h2 className="mb-4 text-2xl font-bold">
+          Dataset Overview
+        </h2>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
 
           <StatCard
             label="Rows"
-            value={profile.rows}
+            value={profile.rows.toLocaleString()}
           />
 
           <StatCard
@@ -758,168 +567,103 @@ export default function Dashboard({
           />
 
         </div>
-
       </section>
 
 
-      {/* ======================================================
-          DATA QUALITY
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* DATA QUALITY */}
+      {/* ===================================================== */}
 
       <section>
-
-        <SectionTitle
-          title="Data Quality"
-          description="Potential issues detected in the dataset."
-        />
-
+        <h2 className="mb-4 text-2xl font-bold">
+          Data Quality
+        </h2>
 
         <div className="grid gap-6 lg:grid-cols-2">
 
-
-          {/* MISSING VALUES */}
+          {/* Missing Values */}
 
           <DashboardCard
             title="Missing Values"
-            description="Percentage of missing values in each column."
           >
 
-            {missingValues.length === 0 ? (
+            <div className="space-y-4">
 
-              <EmptyMessage text="No columns found." />
+              {missingValues.map(
+                ([column, percentage]) => {
 
-            ) : (
+                  const relativeWidth =
+                    maxMissingPercentage > 0
+                      ? (
+                          percentage /
+                          maxMissingPercentage
+                        ) * 100
+                      : 0;
 
-              <div className="mt-5 space-y-5">
+                  const visibleWidth =
+                    percentage === 0
+                      ? 0
+                      : Math.max(
+                          relativeWidth,
+                          4
+                        );
 
-                {missingValues.map(
-                  ([column, percentage]) => {
+                  const count =
+                    profile.missing_values[
+                      column
+                    ] ?? 0;
 
-                    const relativeWidth =
-                      maxMissingPercentage > 0
-                        ? (
-                            percentage /
-                            maxMissingPercentage
-                          ) * 100
-                        : 0;
+                  return (
+                    <div key={column}>
 
+                      <div className="flex items-center justify-between gap-4 text-sm">
 
-                    const visibleWidth =
-                      percentage === 0
-                        ? 0
-                        : Math.max(
-                            relativeWidth,
-                            4
-                          );
+                        <span className="font-medium">
+                          {column}
+                        </span>
 
-
-                    return (
-                      <div key={column}>
-
-                        <div className="flex items-center justify-between gap-4 text-sm">
-
-                          <span className="truncate font-medium">
-                            {column}
-                          </span>
-
-                          <span className="shrink-0 font-semibold">
-                            {percentage}%
-                          </span>
-
-                        </div>
-
-
-                        {/* Progress track */}
-
-                        <div
-                          className="mt-2 w-full overflow-hidden rounded-full"
-                          style={{
-                            height: "10px",
-                            backgroundColor:
-                              "rgba(148, 163, 184, 0.20)",
-                          }}
-                        >
-
-                          {/* Progress fill */}
-
-                          <div
-                            className="rounded-full transition-all duration-700"
-                            style={{
-                              width:
-                                percentage === 0
-                                  ? "0%"
-                                  : `${visibleWidth}%`,
-
-                              height: "100%",
-
-                              minWidth:
-                                percentage > 0
-                                  ? "6px"
-                                  : "0px",
-
-                              backgroundColor:
-                                percentage >= 20
-                                  ? "#ef4444"
-                                  : percentage > 0
-                                  ? "#f59e0b"
-                                  : "transparent",
-                            }}
-                          />
-
-                        </div>
+                        <span className="font-semibold">
+                          {count} (
+                          {percentage}%)
+                        </span>
 
                       </div>
-                    );
-                  }
-                )}
 
-              </div>
+                      <div
+                        className="mt-2 w-full overflow-hidden rounded-full"
+                        style={{
+                          height: "10px",
+                          backgroundColor:
+                            "rgba(148, 163, 184, 0.20)",
+                        }}
+                      >
 
-            )}
+                        <div
+                          className="rounded-full transition-all duration-700"
+                          style={{
+                            width:
+                              percentage === 0
+                                ? "0%"
+                                : `${visibleWidth}%`,
+                            height: "100%",
+                            minWidth:
+                              percentage > 0
+                                ? "6px"
+                                : "0px",
+                            backgroundColor:
+                              percentage >= 20
+                                ? "#ef4444"
+                                : percentage > 0
+                                ? "#f59e0b"
+                                : "transparent",
+                          }}
+                        />
 
-          </DashboardCard>
+                      </div>
 
-
-          {/* DUPLICATES */}
-
-          <DashboardCard
-            title="Duplicate Analysis"
-            description="Duplicate rows detected in the dataset."
-          >
-
-            <div className="mt-5 grid grid-cols-2 gap-4">
-
-              <MiniMetric
-                label="Duplicate Rows"
-                value={
-                  profile.duplicate_rows
+                    </div>
+                  );
                 }
-              />
-
-              <MiniMetric
-                label="Duplicate %"
-                value={`${profile.duplicate_percentage}%`}
-              />
-
-            </div>
-
-
-            <div className="mt-5 rounded-xl bg-muted/10 p-4">
-
-              {profile.duplicate_rows === 0 ? (
-
-                <p className="text-sm text-muted">
-                  No duplicate rows were detected.
-                </p>
-
-              ) : (
-
-                <p className="text-sm text-muted">
-                  Duplicate records were detected.
-                  Consider reviewing them before
-                  model training.
-                </p>
-
               )}
 
             </div>
@@ -927,180 +671,122 @@ export default function Dashboard({
           </DashboardCard>
 
 
-          {/* CONSTANT COLUMNS */}
+          {/* Duplicate Analysis */}
+
+          <DashboardCard
+            title="Duplicate Analysis"
+          >
+
+            <p className="text-3xl font-bold">
+              {profile.duplicate_rows}
+            </p>
+
+            <p className="text-muted">
+              duplicate rows
+            </p>
+
+            <p className="mt-2 text-sm text-muted">
+              {profile.duplicate_percentage}%
+              of the dataset
+            </p>
+
+          </DashboardCard>
+
+
+          {/* Constant Columns */}
 
           <DashboardCard
             title="Constant Columns"
-            description="Columns containing only one unique value."
           >
 
-            {profile.constant_columns.length === 0 ? (
+            {profile.constant_columns
+              .length === 0 ? (
 
-              <EmptyMessage text="No constant columns detected." />
+              <p className="text-muted">
+                No constant columns detected.
+              </p>
 
             ) : (
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <ul className="space-y-2">
 
                 {profile.constant_columns.map(
                   (column) => (
-
-                    <Badge
-                      key={column}
-                      variant="warning"
-                    >
-                      {column}
-                    </Badge>
-
+                    <li key={column}>
+                      • {column}
+                    </li>
                   )
                 )}
 
-              </div>
+              </ul>
 
             )}
 
           </DashboardCard>
 
 
-          {/* ID-LIKE COLUMNS */}
+          {/* ID-like Columns */}
 
           <DashboardCard
             title="Potential ID-like Columns"
-            description="High-cardinality columns that may represent identifiers."
           >
 
-            {profile.id_like_columns.length === 0 ? (
+            {profile.id_like_columns
+              .length === 0 ? (
 
-              <EmptyMessage text="No obvious ID-like columns detected." />
+              <p className="text-muted">
+                No ID-like columns detected.
+              </p>
 
             ) : (
 
-              <div className="mt-5 flex flex-wrap gap-2">
+              <ul className="space-y-2">
 
                 {profile.id_like_columns.map(
                   (column) => (
-
-                    <Badge
-                      key={column}
-                      variant="info"
-                    >
-                      {column}
-                    </Badge>
-
+                    <li key={column}>
+                      • {column}
+                    </li>
                   )
                 )}
 
-              </div>
+              </ul>
 
             )}
 
           </DashboardCard>
 
         </div>
-
       </section>
 
 
-      {/* ======================================================
-          OUTLIERS
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* AUTOMATED FINDINGS */}
+      {/* ===================================================== */}
 
       <section>
 
-        <SectionTitle
-          title="Outlier Analysis"
-          description="Potential numeric outliers detected using the IQR method."
-        />
+        <div className="mb-6">
+          <p className="text-sm font-medium text-muted">
+            Automated Analysis
+          </p>
 
+          <h2 className="mt-1 text-2xl font-bold">
+            Automated Findings
+          </h2>
 
-        <DashboardCard
-          title="Numeric Outliers"
-          description="Columns with values outside the IQR-based boundaries."
-        >
-
-          {Object.keys(
-            profile.outlier_counts
-          ).length === 0 ? (
-
-            <EmptyMessage text="No numeric columns found." />
-
-          ) : (
-
-            <div className="mt-5 space-y-4">
-
-              {Object.entries(
-                profile.outlier_counts
-              ).map(
-                ([column, count]) => (
-
-                  <div
-                    key={column}
-                    className="flex items-center justify-between rounded-xl border border-border p-4"
-                  >
-
-                    <div>
-
-                      <p className="font-medium">
-                        {column}
-                      </p>
-
-                      <p className="mt-1 text-sm text-muted">
-                        {profile.outlier_percentages[
-                          column
-                        ] ?? 0}
-                        % of rows
-                      </p>
-
-                    </div>
-
-
-                    <div className="text-right">
-
-                      <p className="text-lg font-bold">
-                        {count}
-                      </p>
-
-                      <p className="text-xs text-muted">
-                        potential outliers
-                      </p>
-
-                    </div>
-
-                  </div>
-
-                )
-              )}
-
-            </div>
-
-          )}
-
-        </DashboardCard>
-
-      </section>
-
-
-      {/* ======================================================
-          AUTOMATED FINDINGS
-      ====================================================== */}
-
-      <section>
-
-        <SectionTitle
-          title="Automated Findings"
-          description="Rule-based insights generated from the dataset."
-        />
-
+          <p className="mt-2 text-muted">
+            Important patterns and potential data-quality
+            issues identified automatically.
+          </p>
+        </div>
 
         {findings.length === 0 ? (
 
-          <DashboardCard
-            title="No Findings"
-            description="No significant patterns were detected."
-          >
-
-            <EmptyMessage text="The analysis did not generate any findings." />
-
+          <DashboardCard title="Findings">
+            <p className="text-muted">
+              No significant findings were detected.
+            </p>
           </DashboardCard>
 
         ) : (
@@ -1109,12 +795,10 @@ export default function Dashboard({
 
             {findings.map(
               (finding, index) => (
-
                 <FindingCard
                   key={`${finding.title}-${index}`}
                   finding={finding}
                 />
-
               )
             )}
 
@@ -1125,110 +809,49 @@ export default function Dashboard({
       </section>
 
 
-      {/* ======================================================
-          TARGET + PREPROCESSING
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* TARGET + PREPROCESSING */}
+      {/* ===================================================== */}
 
       <section>
 
-        <SectionTitle
-          title="Machine Learning Preparation"
-          description="Identify the prediction target and prepare the dataset for machine learning."
-        />
+        <div className="mb-6">
+          <p className="text-sm font-medium text-muted">
+            Machine Learning Preparation
+          </p>
 
+          <h2 className="mt-1 text-2xl font-bold">
+            Target Detection & Preprocessing
+          </h2>
+
+          <p className="mt-2 text-muted">
+            Identify the prediction target and prepare the
+            dataset for machine-learning models.
+          </p>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
 
-
-          {/* TARGET DETECTION */}
+          {/* Target Detection */}
 
           <DashboardCard
             title="Target Detection"
-            description="Automatically identify a likely target column."
           >
 
             {targetDetection ? (
 
-              <div className="mt-5 space-y-5">
-
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-5">
-
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-
-                    <div>
-
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted">
-                        Recommended Target
-                      </p>
-
-                      <p className="mt-1 text-2xl font-bold">
-                        {targetDetection.recommended_target ??
-                          "None detected"}
-                      </p>
-
-                    </div>
-
-
-                    <div className="flex gap-2">
-
-                      <Badge variant="info">
-                        {targetDetection.problem_type}
-                      </Badge>
-
-                      <Badge variant="positive">
-                        {targetDetection.confidence}
-                      </Badge>
-
-                    </div>
-
-                  </div>
-
-
-                  <p className="mt-4 text-sm leading-6 text-muted">
-                    {targetDetection.reason}
-                  </p>
-
-                </div>
-
+              <div className="space-y-5">
 
                 <div>
+                  <p className="text-sm text-muted">
+                    Recommended Target
+                  </p>
 
-                  <label className="text-sm font-medium">
-                    Select Target Column
-                  </label>
-
-                  <select
-                    value={selectedTarget}
-                    onChange={(event) =>
-                      setSelectedTarget(
-                        event.target.value
-                      )
-                    }
-                    className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm outline-none transition focus:border-primary"
-                  >
-
-                    <option value="">
-                      Select a target
-                    </option>
-
-                    {targetDetection.candidates.map(
-                      (candidate) => (
-
-                        <option
-                          key={candidate.column}
-                          value={candidate.column}
-                        >
-                          {candidate.column} —{" "}
-                          {candidate.problem_type}
-                        </option>
-
-                      )
-                    )}
-
-                  </select>
-
+                  <p className="mt-1 text-xl font-bold">
+                    {targetDetection.recommended_target ||
+                      "No target detected"}
+                  </p>
                 </div>
-
 
                 <div className="grid grid-cols-2 gap-4">
 
@@ -1248,37 +871,55 @@ export default function Dashboard({
 
                 </div>
 
-              </div>
+                <div className="rounded-lg border border-border bg-background p-4">
 
-            ) : (
+                  <p className="text-sm font-medium">
+                    Why this target?
+                  </p>
 
-              <EmptyMessage text="Target detection unavailable." />
+                  <p className="mt-2 text-sm text-muted">
+                    {targetDetection.reason}
+                  </p>
 
-            )}
+                </div>
 
-          </DashboardCard>
+                <div>
 
+                  <label className="text-sm font-medium">
+                    Target Column
+                  </label>
 
-          {/* PREPROCESSING */}
+                  <select
+                    value={selectedTarget}
+                    onChange={(event) =>
+                      setSelectedTarget(
+                        event.target.value
+                      )
+                    }
+                    className="mt-2 w-full rounded-lg border border-border bg-background px-4 py-3 outline-none"
+                  >
 
-          <DashboardCard
-            title="Preprocessing"
-            description="Transform the raw dataset into machine-learning-ready data."
-          >
+                    <option value="">
+                      Select target
+                    </option>
 
-            {!preprocessing ? (
+                    {profile.column_names.map(
+                      (column) => (
+                        <option
+                          key={column}
+                          value={column}
+                        >
+                          {column}
+                        </option>
+                      )
+                    )}
 
-              <div className="mt-5">
+                  </select>
 
-                <p className="text-sm leading-6 text-muted">
-                  Select a target column and prepare the
-                  dataset. InsightForgeAI will handle
-                  missing values, encoding, scaling and
-                  train/test splitting.
-                </p>
-
+                </div>
 
                 <button
+                  type="button"
                   onClick={
                     handlePrepareDataset
                   }
@@ -1286,72 +927,96 @@ export default function Dashboard({
                     !selectedTarget ||
                     isPreparing
                   }
-                  className="mt-6 w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="w-full rounded-lg bg-foreground px-4 py-3 font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-
                   {isPreparing
                     ? "Preparing Dataset..."
                     : "Prepare Dataset"}
-
                 </button>
 
               </div>
 
             ) : (
 
-              <div className="mt-5 space-y-5">
+              <p className="text-muted">
+                Target detection information is unavailable.
+              </p>
+
+            )}
+
+          </DashboardCard>
+
+
+          {/* Preprocessing */}
+
+          <DashboardCard
+            title="Preprocessing Summary"
+          >
+
+            {!preprocessing ? (
+
+              <div>
+
+                <p className="text-muted">
+                  Select a target and click
+                  "Prepare Dataset" to see the
+                  preprocessing pipeline.
+                </p>
+
+              </div>
+
+            ) : (
+
+              <div className="space-y-5">
 
                 <div className="grid grid-cols-2 gap-4">
 
                   <MiniMetric
-                    label="Train Rows"
+                    label="Problem Type"
                     value={
-                      preprocessing.train_rows
+                      preprocessing.problem_type
                     }
                   />
 
                   <MiniMetric
-                    label="Test Rows"
-                    value={
-                      preprocessing.test_rows
-                    }
-                  />
-
-                  <MiniMetric
-                    label="Features"
+                    label="Processed Features"
                     value={
                       preprocessing.processed_features
                     }
                   />
 
                   <MiniMetric
-                    label="Problem"
+                    label="Training Rows"
                     value={
-                      preprocessing.problem_type
+                      preprocessing.train_rows
+                    }
+                  />
+
+                  <MiniMetric
+                    label="Testing Rows"
+                    value={
+                      preprocessing.test_rows
                     }
                   />
 
                 </div>
 
-
                 <div>
 
-                  <p className="text-sm font-semibold">
-                    Applied Steps
+                  <p className="mb-3 text-sm font-medium">
+                    Processing Steps
                   </p>
 
-                  <div className="mt-3 space-y-2">
+                  <div className="space-y-2">
 
                     {preprocessing.steps.map(
                       (step, index) => (
-
                         <div
                           key={index}
-                          className="rounded-lg bg-muted/10 px-3 py-2 text-sm text-muted"
+                          className="rounded-lg border border-border bg-background p-3 text-sm"
                         >
                           ✓ {step}
                         </div>
-
                       )
                     )}
 
@@ -1359,24 +1024,6 @@ export default function Dashboard({
 
                 </div>
 
-
-                <button
-                  onClick={
-                    handlePrepareDataset
-                  }
-                  disabled={
-                    !selectedTarget ||
-                    isPreparing
-                  }
-                  className="w-full rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold transition hover:bg-muted/20 disabled:opacity-50"
-                >
-
-                  {isPreparing
-                    ? "Preparing..."
-                    : "Prepare Again"}
-
-                </button>
-
               </div>
 
             )}
@@ -1388,758 +1035,439 @@ export default function Dashboard({
       </section>
 
 
-      {/* ======================================================
-          AUTOML
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* AUTOMATED EDA */}
+      {/* ===================================================== */}
 
       <section>
 
-        <SectionTitle
-          title="AutoML"
-          description="Train and compare multiple machine-learning models automatically."
-        />
+        <div className="mb-6">
+
+          <p className="text-sm font-medium text-muted">
+            Automated Analysis
+          </p>
+
+          <h2 className="mt-1 text-2xl font-bold">
+            Automated EDA
+          </h2>
+
+          <p className="mt-2 text-muted">
+            Automatically generated statistical
+            analysis and visual summaries.
+          </p>
+
+        </div>
 
 
-        <DashboardCard
-          title="Automated Model Comparison"
-          description="InsightForgeAI trains several baseline classification models and compares their performance."
-        >
+        {/* Numeric Statistics */}
 
-          <div className="mt-5">
+        <div className="mb-8">
 
+          <h3 className="mb-4 text-xl font-semibold">
+            Numeric Statistics
+          </h3>
 
-            {!automlData ? (
+          <div className="grid gap-6 md:grid-cols-2">
 
-              <div>
+            {Object.entries(
+              eda.numeric_statistics
+            ).map(
+              ([column, stats]) => (
 
-                <div className="rounded-xl border border-border bg-muted/5 p-5">
+                <div
+                  key={column}
+                  className="rounded-xl border border-border bg-card p-6"
+                >
 
-                  <p className="font-medium">
-                    Ready to train models
-                  </p>
+                  <h4 className="mb-4 font-semibold">
+                    {column}
+                  </h4>
 
-                  <p className="mt-2 text-sm leading-6 text-muted">
-                    Target column:{" "}
-                    <span className="font-semibold text-foreground">
-                      {selectedTarget ||
-                        "Not selected"}
-                    </span>
-                  </p>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
 
-                </div>
+                    <MiniMetric
+                      label="Mean"
+                      value={stats.mean}
+                    />
 
+                    <MiniMetric
+                      label="Median"
+                      value={stats.median}
+                    />
 
-                {automlError && (
+                    <MiniMetric
+                      label="Minimum"
+                      value={stats.min}
+                    />
 
-                  <div className="mt-4 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-500">
-                    {automlError}
+                    <MiniMetric
+                      label="Maximum"
+                      value={stats.max}
+                    />
+
+                    <MiniMetric
+                      label="Std Dev"
+                      value={stats.std}
+                    />
+
+                    <MiniMetric
+                      label="Count"
+                      value={stats.count}
+                    />
+
                   </div>
 
-                )}
-
-
-                <button
-                  onClick={
-                    handleRunAutoML
-                  }
-                  disabled={
-                    !selectedTarget ||
-                    isRunningAutoML
-                  }
-                  className="mt-5 w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-
-                  {isRunningAutoML
-                    ? "Training Models..."
-                    : "Run AutoML"}
-
-                </button>
-
-              </div>
-
-            ) : (
-
-              <div className="space-y-6">
-
-
-                {/* Leaderboard */}
-
-                <div className="overflow-x-auto">
-
-                  <table className="w-full min-w-[650px] text-left text-sm">
-
-                    <thead>
-
-                      <tr className="border-b border-border">
-
-                        <th className="px-4 py-3 font-semibold">
-                          Model
-                        </th>
-
-                        <th className="px-4 py-3 font-semibold">
-                          Accuracy
-                        </th>
-
-                        <th className="px-4 py-3 font-semibold">
-                          Precision
-                        </th>
-
-                        <th className="px-4 py-3 font-semibold">
-                          Recall
-                        </th>
-
-                        <th className="px-4 py-3 font-semibold">
-                          F1 Score
-                        </th>
-
-                      </tr>
-
-                    </thead>
-
-
-                    <tbody>
-
-                      {automlData.automl.results.map(
-                        (result, index) => (
-
-                          <tr
-                            key={result.model}
-                            className="border-b border-border last:border-0"
-                          >
-
-                            <td className="px-4 py-4">
-
-                              <div className="flex items-center gap-3">
-
-                                {index === 0 && (
-
-                                  <span className="rounded-full bg-primary/10 px-2 py-1 text-xs font-semibold text-primary">
-                                    Best
-                                  </span>
-
-                                )}
-
-                                <span className="font-medium">
-                                  {result.model}
-                                </span>
-
-                              </div>
-
-                            </td>
-
-                            <td className="px-4 py-4">
-                              {formatMetric(
-                                result.accuracy
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4">
-                              {formatMetric(
-                                result.precision
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4">
-                              {formatMetric(
-                                result.recall
-                              )}
-                            </td>
-
-                            <td className="px-4 py-4 font-semibold">
-                              {formatMetric(
-                                result.f1_score
-                              )}
-                            </td>
-
-                          </tr>
-
-                        )
-                      )}
-
-                    </tbody>
-
-                  </table>
-
                 </div>
 
-
-                <div className="grid gap-4 sm:grid-cols-3">
-
-                  <MiniMetric
-                    label="Models Tested"
-                    value={
-                      automlData.automl
-                        .models_tested
-                    }
-                  />
-
-                  <MiniMetric
-                    label="Target"
-                    value={
-                      automlData.target
-                    }
-                  />
-
-                  <MiniMetric
-                    label="Problem"
-                    value={
-                      automlData.automl
-                        .problem_type
-                    }
-                  />
-
-                </div>
-
-
-                <button
-                  onClick={
-                    handleRunAutoML
-                  }
-                  disabled={
-                    !selectedTarget ||
-                    isRunningAutoML
-                  }
-                  className="w-full rounded-xl border border-border bg-card px-5 py-3 text-sm font-semibold transition hover:bg-muted/20 disabled:opacity-50"
-                >
-
-                  {isRunningAutoML
-                    ? "Training..."
-                    : "Run AutoML Again"}
-
-                </button>
-
-              </div>
-
+              )
             )}
 
           </div>
 
-        </DashboardCard>
-
-      </section>
+        </div>
 
 
-      {/* ======================================================
-          AUTOMATED EDA
-      ====================================================== */}
+        {/* Categorical Distributions */}
 
-      <section>
+        <div className="mb-8">
 
-        <SectionTitle
-          title="Automated EDA"
-          description="Automatically generated statistical and visual analysis."
-        />
+          <h3 className="mb-4 text-xl font-semibold">
+            Categorical Distributions
+          </h3>
 
+          <div className="grid gap-6 lg:grid-cols-2">
 
-        <div className="grid gap-6 lg:grid-cols-2">
+            {categoricalCharts.map(
+              (column) => {
 
+                const chartData =
+                  eda
+                    .categorical_statistics[
+                    column
+                  ]?.top_values || [];
 
-          {/* NUMERIC STATISTICS */}
+                return (
 
-          <DashboardCard
-            title="Numeric Statistics"
-            description="Descriptive statistics for numeric columns."
-          >
-
-            {eda.numeric_columns.length === 0 ? (
-
-              <EmptyMessage text="No numeric columns detected." />
-
-            ) : (
-
-              <div className="mt-5 overflow-x-auto">
-
-                <table className="w-full min-w-[700px] text-left text-sm">
-
-                  <thead>
-
-                    <tr className="border-b border-border">
-
-                      <th className="px-3 py-3">
-                        Column
-                      </th>
-
-                      <th className="px-3 py-3">
-                        Mean
-                      </th>
-
-                      <th className="px-3 py-3">
-                        Median
-                      </th>
-
-                      <th className="px-3 py-3">
-                        Std
-                      </th>
-
-                      <th className="px-3 py-3">
-                        Min
-                      </th>
-
-                      <th className="px-3 py-3">
-                        Max
-                      </th>
-
-                    </tr>
-
-                  </thead>
-
-
-                  <tbody>
-
-                    {eda.numeric_columns.map(
-                      (column) => {
-
-                        const stats =
-                          eda.numeric_statistics[
-                            column
-                          ];
-
-
-                        return (
-                          <tr
-                            key={column}
-                            className="border-b border-border last:border-0"
-                          >
-
-                            <td className="px-3 py-3 font-medium">
-                              {column}
-                            </td>
-
-                            <td className="px-3 py-3">
-                              {stats?.mean ?? "-"}
-                            </td>
-
-                            <td className="px-3 py-3">
-                              {stats?.median ?? "-"}
-                            </td>
-
-                            <td className="px-3 py-3">
-                              {stats?.std ?? "-"}
-                            </td>
-
-                            <td className="px-3 py-3">
-                              {stats?.min ?? "-"}
-                            </td>
-
-                            <td className="px-3 py-3">
-                              {stats?.max ?? "-"}
-                            </td>
-
-                          </tr>
-                        );
-                      }
-                    )}
-
-                  </tbody>
-
-                </table>
-
-              </div>
-
-            )}
-
-          </DashboardCard>
-
-
-          {/* NUMERIC RANGE */}
-
-          <DashboardCard
-            title="Numeric Range Overview"
-            description="Minimum, average and maximum values for numeric features."
-          >
-
-            {numericRangeData.length === 0 ? (
-
-              <EmptyMessage text="No numeric data available." />
-
-            ) : (
-
-              <div className="mt-5 h-[320px] w-full">
-
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                >
-
-                  <LineChart
-                    data={numericRangeData}
-                    margin={{
-                      top: 10,
-                      right: 10,
-                      left: 0,
-                      bottom: 10,
-                    }}
+                  <div
+                    key={column}
+                    className="rounded-xl border border-border bg-card p-6"
                   >
 
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      opacity={0.2}
-                    />
+                    <h4 className="mb-4 font-semibold">
+                      {column}
+                    </h4>
 
-                    <XAxis
-                      dataKey="column"
-                      tick={{
-                        fontSize: 11,
-                      }}
-                    />
+                    <div className="h-[300px]">
 
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                      }}
-                    />
-
-                    <Tooltip />
-
-                    <Line
-                      type="monotone"
-                      dataKey="min"
-                      name="Minimum"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      dot={false}
-                    />
-
-                    <Line
-                      type="monotone"
-                      dataKey="mean"
-                      name="Mean"
-                      stroke="currentColor"
-                      strokeWidth={3}
-                    />
-
-                    <Line
-                      type="monotone"
-                      dataKey="max"
-                      name="Maximum"
-                      stroke="currentColor"
-                      strokeWidth={2}
-                      strokeDasharray="5 5"
-                    />
-
-                  </LineChart>
-
-                </ResponsiveContainer>
-
-              </div>
-
-            )}
-
-          </DashboardCard>
-
-
-          {/* CATEGORICAL DISTRIBUTIONS */}
-
-          <DashboardCard
-            title="Categorical Distributions"
-            description="Most frequent values across categorical columns."
-          >
-
-            {categoricalChartData.length === 0 ? (
-
-              <EmptyMessage text="No categorical columns detected." />
-
-            ) : (
-
-              <div className="mt-5 h-[320px] w-full">
-
-                <ResponsiveContainer
-                  width="100%"
-                  height="100%"
-                >
-
-                  <BarChart
-                    data={categoricalChartData}
-                    margin={{
-                      top: 10,
-                      right: 10,
-                      left: 0,
-                      bottom: 30,
-                    }}
-                  >
-
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      opacity={0.2}
-                    />
-
-                    <XAxis
-                      dataKey="column"
-                      angle={-25}
-                      textAnchor="end"
-                      height={60}
-                      tick={{
-                        fontSize: 11,
-                      }}
-                    />
-
-                    <YAxis
-                      tick={{
-                        fontSize: 11,
-                      }}
-                    />
-
-                    <Tooltip />
-
-                    <Bar
-                      dataKey="count"
-                      name="Top category count"
-                      fill="currentColor"
-                      radius={[
-                        6,
-                        6,
-                        0,
-                        0,
-                      ]}
-                    />
-
-                  </BarChart>
-
-                </ResponsiveContainer>
-
-              </div>
-
-            )}
-
-          </DashboardCard>
-
-
-          {/* CATEGORICAL DETAILS */}
-
-          <DashboardCard
-            title="Categorical Details"
-            description="Most common values in categorical features."
-          >
-
-            {eda.categorical_columns.length === 0 ? (
-
-              <EmptyMessage text="No categorical columns detected." />
-
-            ) : (
-
-              <div className="mt-5 space-y-4">
-
-                {eda.categorical_columns
-                  .slice(0, 6)
-                  .map((column) => {
-
-                    const stats =
-                      eda.categorical_statistics[
-                        column
-                      ];
-
-
-                    return (
-                      <div
-                        key={column}
-                        className="rounded-xl border border-border p-4"
+                      <ResponsiveContainer
+                        width="100%"
+                        height="100%"
                       >
 
-                        <div className="flex items-center justify-between">
+                        <BarChart
+                          data={chartData}
+                        >
 
-                          <p className="font-medium">
-                            {column}
-                          </p>
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                          />
 
-                          <span className="text-xs text-muted">
-                            {stats?.unique_values ??
-                              0}{" "}
-                            unique
-                          </span>
+                          <XAxis
+                            dataKey="value"
+                          />
 
-                        </div>
+                          <YAxis />
 
+                          <Tooltip />
 
-                        <div className="mt-3 space-y-2">
+                          <Legend />
 
-                          {(
-                            stats?.top_values ??
-                            []
-                          )
-                            .slice(0, 4)
-                            .map(
-                              (value) => (
+                          <Bar
+                            dataKey="count"
+                            name="Count"
+                          />
 
-                                <div
-                                  key={`${column}-${value.value}`}
-                                  className="flex items-center justify-between text-sm"
-                                >
+                        </BarChart>
 
-                                  <span className="truncate text-muted">
-                                    {value.value}
-                                  </span>
+                      </ResponsiveContainer>
 
-                                  <span className="font-medium">
-                                    {value.count}
-                                  </span>
+                    </div>
 
-                                </div>
+                  </div>
 
-                              )
-                            )}
-
-                        </div>
-
-                      </div>
-                    );
-                  })}
-
-              </div>
-
+                );
+              }
             )}
 
-          </DashboardCard>
+          </div>
+
+        </div>
+
+
+        {/* Numeric Range Overview */}
+
+        <div className="mb-8">
+
+          <h3 className="mb-4 text-xl font-semibold">
+            Numeric Range Overview
+          </h3>
+
+          <div className="rounded-xl border border-border bg-card p-6">
+
+            <div className="h-[350px]">
+
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+              >
+
+                <LineChart
+                  data={Object.entries(
+                    eda.numeric_statistics
+                  ).map(
+                    ([column, stats]) => ({
+                      column,
+                      min: stats.min,
+                      mean: stats.mean,
+                      median: stats.median,
+                      max: stats.max,
+                    })
+                  )}
+                >
+
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                  />
+
+                  <XAxis
+                    dataKey="column"
+                  />
+
+                  <YAxis />
+
+                  <Tooltip />
+
+                  <Legend />
+
+                  <Line
+                    type="monotone"
+                    dataKey="min"
+                    name="Minimum"
+                  />
+
+                  <Line
+                    type="monotone"
+                    dataKey="mean"
+                    name="Mean"
+                  />
+
+                  <Line
+                    type="monotone"
+                    dataKey="median"
+                    name="Median"
+                  />
+
+                  <Line
+                    type="monotone"
+                    dataKey="max"
+                    name="Maximum"
+                  />
+
+                </LineChart>
+
+              </ResponsiveContainer>
+
+            </div>
+
+          </div>
 
         </div>
 
       </section>
 
 
-      {/* ======================================================
-          CORRELATION HEATMAP
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* CORRELATION HEATMAP */}
+      {/* ===================================================== */}
 
       <section>
 
-        <SectionTitle
-          title="Correlation Analysis"
-          description="Pearson correlation between numeric variables."
-        />
+        <div className="mb-6">
 
+          <p className="text-sm font-medium text-muted">
+            Relationship Analysis
+          </p>
 
-        <DashboardCard
-          title="Correlation Heatmap"
-          description="Green represents positive correlation, red represents negative correlation."
-        >
+          <h2 className="mt-1 text-2xl font-bold">
+            Correlation Heatmap
+          </h2>
+
+          <p className="mt-2 text-muted">
+            Shows the strength and direction of
+            relationships between numeric variables.
+          </p>
+
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-6">
 
           {eda.correlation_matrix.columns.length <
           2 ? (
 
-            <EmptyMessage text="At least two numeric columns are required to calculate correlations." />
+            <p className="text-muted">
+              At least two numeric columns are required
+              to generate a correlation heatmap.
+            </p>
 
           ) : (
 
-            <div className="mt-5 overflow-x-auto">
+            <div className="overflow-x-auto">
 
               <div
-                className="inline-block min-w-full"
+                className="mx-auto"
                 style={{
                   minWidth:
-                    Math.max(
-                      500,
+                    `${
                       eda.correlation_matrix
                         .columns.length *
-                        100
-                    ),
+                        100 +
+                      120
+                    }px`,
                 }}
               >
 
-                {/* Column headers */}
+                {/* Column Headers */}
 
-                <div className="flex">
+                <div
+                  className="grid"
+                  style={{
+                    gridTemplateColumns:
+                      `120px repeat(${eda.correlation_matrix.columns.length}, 100px)`,
+                  }}
+                >
 
-                  <div
-                    className="shrink-0"
-                    style={{
-                      width: "150px",
-                    }}
-                  />
+                  <div />
 
                   {eda.correlation_matrix.columns.map(
                     (column) => (
-
                       <div
                         key={column}
-                        className="flex items-end justify-center px-2 pb-2 text-center text-xs font-medium"
-                        style={{
-                          width: "90px",
-                          height: "80px",
-                          writingMode:
-                            "vertical-rl",
-                          transform:
-                            "rotate(180deg)",
-                        }}
+                        className="flex h-20 items-end justify-center px-2 pb-2 text-xs font-medium"
                       >
-                        {column}
-                      </div>
 
+                        <span
+                          className="max-w-[90px] truncate"
+                          title={column}
+                        >
+                          {column}
+                        </span>
+
+                      </div>
                     )
                   )}
 
                 </div>
 
 
-                {/* Heatmap rows */}
+                {/* Heatmap Rows */}
 
                 {eda.correlation_matrix.values.map(
-                  (row, rowIndex) => (
+                  (row, rowIndex) => {
 
-                    <div
-                      key={
-                        eda.correlation_matrix
-                          .columns[rowIndex]
-                      }
-                      className="flex"
-                    >
+                    const rowName =
+                      eda.correlation_matrix
+                        .columns[rowIndex];
+
+                    return (
 
                       <div
-                        className="flex shrink-0 items-center px-3 text-xs font-medium"
+                        key={rowName}
+                        className="grid"
                         style={{
-                          width: "150px",
+                          gridTemplateColumns:
+                            `120px repeat(${eda.correlation_matrix.columns.length}, 100px)`,
                         }}
                       >
 
-                        {
-                          eda
-                            .correlation_matrix
-                            .columns[
-                            rowIndex
-                          ]
-                        }
+                        <div className="flex items-center pr-4 text-right text-xs font-medium">
+
+                          <span
+                            className="w-full truncate"
+                            title={rowName}
+                          >
+                            {rowName}
+                          </span>
+
+                        </div>
+
+
+                        {row.map(
+                          (
+                            correlation,
+                            columnIndex
+                          ) => {
+
+                            const value =
+                              Number(
+                                correlation
+                              );
+
+                            let backgroundColor =
+                              "rgb(229, 231, 235)";
+
+                            if (value > 0) {
+
+                              const normalized =
+                                value;
+
+                              const intensity =
+                                Math.round(
+                                  255 -
+                                    normalized *
+                                      150
+                                );
+
+                              backgroundColor =
+                                `rgb(${intensity}, ${intensity}, 255)`;
+
+                            } else if (
+                              value < 0
+                            ) {
+
+                              const intensity =
+                                Math.round(
+                                  255 -
+                                    Math.abs(
+                                      value
+                                    ) *
+                                      150
+                                );
+
+                              backgroundColor =
+                                `rgb(255, ${intensity}, ${intensity})`;
+                            }
+
+                            return (
+
+                              <div
+                                key={`${rowName}-${columnIndex}`}
+                                className="flex h-[70px] items-center justify-center border border-white text-sm font-semibold transition-transform hover:scale-105"
+                                style={{
+                                  backgroundColor,
+                                }}
+                                title={`${rowName} vs ${eda.correlation_matrix.columns[columnIndex]}: ${value}`}
+                              >
+                                {value.toFixed(2)}
+                              </div>
+
+                            );
+                          }
+                        )}
 
                       </div>
 
-
-                      {row.map(
-                        (
-                          correlation,
-                          columnIndex
-                        ) => (
-
-                          <div
-                            key={`${rowIndex}-${columnIndex}`}
-                            className="flex items-center justify-center border border-background text-xs font-semibold transition-transform hover:z-10 hover:scale-105"
-                            style={{
-                              width: "90px",
-                              height: "60px",
-
-                              backgroundColor:
-                                getCorrelationColor(
-                                  correlation
-                                ),
-
-                              color:
-                                getCorrelationTextColor(
-                                  correlation
-                                ),
-                            }}
-                            title={`${eda.correlation_matrix.columns[rowIndex]} vs ${eda.correlation_matrix.columns[columnIndex]}: ${correlation.toFixed(
-                              3
-                            )}`}
-                          >
-
-                            {correlation.toFixed(
-                              2
-                            )}
-
-                          </div>
-
-                        )
-                      )}
-
-                    </div>
-
-                  )
+                    );
+                  }
                 )}
 
               </div>
@@ -2148,176 +1476,683 @@ export default function Dashboard({
 
           )}
 
-        </DashboardCard>
-
-      </section>
+        </div>
 
 
-      {/* ======================================================
-          COLUMN INFORMATION
-      ====================================================== */}
+        {/* Heatmap Legend */}
 
-      <section>
+        {eda.correlation_matrix.columns.length >=
+          2 && (
 
-        <SectionTitle
-          title="Column Information"
-          description="Schema and cardinality information for every column."
-        />
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-6 text-sm text-muted">
 
+            <div className="flex items-center gap-2">
 
-        <DashboardCard
-          title="Dataset Schema"
-          description="Data types and unique-value counts."
-        >
+              <span
+                className="h-4 w-4 rounded-sm"
+                style={{
+                  backgroundColor:
+                    "rgb(105, 105, 255)",
+                }}
+              />
 
-          <div className="mt-5 overflow-x-auto">
+              <span>
+                Positive correlation
+              </span>
 
-            <table className="w-full min-w-[700px] text-left text-sm">
-
-              <thead>
-
-                <tr className="border-b border-border">
-
-                  <th className="px-4 py-3">
-                    Column
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Data Type
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Unique Values
-                  </th>
-
-                  <th className="px-4 py-3">
-                    Missing
-                  </th>
-
-                </tr>
-
-              </thead>
+            </div>
 
 
-              <tbody>
+            <div className="flex items-center gap-2">
 
-                {profile.column_names.map(
-                  (column) => (
+              <span
+                className="h-4 w-4 rounded-sm"
+                style={{
+                  backgroundColor:
+                    "rgb(255, 105, 105)",
+                }}
+              />
 
-                    <tr
-                      key={column}
-                      className="border-b border-border last:border-0"
-                    >
+              <span>
+                Negative correlation
+              </span>
 
-                      <td className="px-4 py-4 font-medium">
-                        {column}
-                      </td>
+            </div>
 
-                      <td className="px-4 py-4">
 
-                        <Badge variant="info">
-                          {
-                            profile
-                              .data_types[
-                              column
-                            ]
-                          }
-                        </Badge>
+            <div className="flex items-center gap-2">
 
-                      </td>
+              <span
+                className="h-4 w-4 rounded-sm"
+                style={{
+                  backgroundColor:
+                    "rgb(229, 231, 235)",
+                }}
+              />
 
-                      <td className="px-4 py-4">
-                        {
-                          profile
-                            .unique_values[
-                            column
-                          ]
-                        }
-                      </td>
+              <span>
+                Weak / no correlation
+              </span>
 
-                      <td className="px-4 py-4">
-
-                        {profile.missing_values[
-                          column
-                        ] ?? 0}
-
-                      </td>
-
-                    </tr>
-
-                  )
-                )}
-
-              </tbody>
-
-            </table>
+            </div>
 
           </div>
 
-        </DashboardCard>
+        )}
 
       </section>
 
 
-      {/* ======================================================
-          FUTURE MODULES
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* OUTLIER ANALYSIS */}
+      {/* ===================================================== */}
 
       <section>
 
-        <SectionTitle
-          title="Advanced Analysis"
-          description="Additional intelligence planned for InsightForgeAI."
-        />
+        <h2 className="mb-4 text-2xl font-bold">
+          Numeric Outlier Analysis
+        </h2>
 
+        <div className="rounded-xl border border-border bg-card p-6">
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Object.keys(
+            profile.outlier_counts
+          ).length === 0 ? (
 
-          <FutureModule
-            title="AI Insights"
-            description="LLM-powered explanations of important patterns and findings."
-          />
+            <p className="text-muted">
+              No numeric columns available
+              for outlier analysis.
+            </p>
 
-          <FutureModule
-            title="Explainability"
-            description="Feature importance and model-level explanations."
-          />
+          ) : (
 
-          <FutureModule
-            title="Prediction"
-            description="Use trained models to generate predictions for new records."
-          />
+            <div className="space-y-4">
 
-          <FutureModule
-            title="PDF Report"
-            description="Download a professional automated data-analysis report."
-          />
+              {Object.entries(
+                profile.outlier_counts
+              ).map(
+                ([column, count]) => (
+
+                  <div
+                    key={column}
+                    className="flex items-center justify-between border-b border-border pb-3"
+                  >
+
+                    <span className="font-medium">
+                      {column}
+                    </span>
+
+                    <span>
+                      {count} outliers (
+                      {
+                        profile
+                          .outlier_percentages[
+                          column
+                        ]
+                      }
+                      %)
+                    </span>
+
+                  </div>
+
+                )
+              )}
+
+            </div>
+
+          )}
 
         </div>
 
       </section>
 
 
-      {/* ======================================================
-          FOOTER
-      ====================================================== */}
+      {/* ===================================================== */}
+      {/* AUTOML */}
+      {/* ===================================================== */}
 
-      <div className="border-t border-border pt-6 text-center">
+      <section>
 
-        <p className="text-sm text-muted">
-          InsightForgeAI • Automated Data Intelligence Platform
-        </p>
+        <div className="mb-6">
 
-      </div>
+          <p className="text-sm font-medium text-muted">
+            Machine Learning
+          </p>
+
+          <h2 className="mt-1 text-2xl font-bold">
+            AutoML Model Comparison
+          </h2>
+
+          <p className="mt-2 text-muted">
+            Train and compare multiple machine-learning
+            models automatically.
+          </p>
+
+        </div>
+
+        <div className="rounded-xl border border-border bg-card p-6">
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+
+            <div>
+
+              <p className="text-sm text-muted">
+                Selected Target
+              </p>
+
+              <p className="mt-1 text-lg font-bold">
+                {selectedTarget ||
+                  "No target selected"}
+              </p>
+
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRunAutoML}
+              disabled={
+                !selectedTarget ||
+                isRunningAutoML
+              }
+              className="rounded-lg bg-foreground px-6 py-3 font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isRunningAutoML
+                ? "Running AutoML..."
+                : "Run AutoML"}
+            </button>
+
+          </div>
+
+          {automlError ? (
+
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              {automlError}
+            </div>
+
+          ) : null}
+
+
+          {automlData ? (
+
+            <div className="mt-8">
+
+              <div className="mb-5 grid gap-4 sm:grid-cols-3">
+
+                <MiniMetric
+                  label="Problem Type"
+                  value={
+                    automlData.automl
+                      .problem_type
+                  }
+                />
+
+                <MiniMetric
+                  label="Models Tested"
+                  value={
+                    automlData.automl
+                      .models_tested
+                  }
+                />
+
+                <MiniMetric
+                  label="Best Model"
+                  value={
+                    automlData.automl
+                      .results[0]
+                      ?.model ||
+                    "N/A"
+                  }
+                />
+
+              </div>
+
+
+              <div className="overflow-x-auto rounded-xl border border-border">
+
+                <table className="w-full text-left">
+
+                  <thead className="border-b border-border">
+
+                    <tr>
+
+                      <th className="px-5 py-4">
+                        Model
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Accuracy
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Precision
+                      </th>
+
+                      <th className="px-5 py-4">
+                        Recall
+                      </th>
+
+                      <th className="px-5 py-4">
+                        F1 Score
+                      </th>
+
+                    </tr>
+
+                  </thead>
+
+                  <tbody>
+
+                    {automlData.automl.results.map(
+                      (result, index) => (
+
+                        <tr
+                          key={result.model}
+                          className="border-b border-border last:border-0"
+                        >
+
+                          <td className="px-5 py-4 font-medium">
+
+                            <div className="flex items-center gap-2">
+
+                              {index === 0 ? (
+                                <span className="rounded-full bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">
+                                  Best
+                                </span>
+                              ) : null}
+
+                              {result.model}
+
+                            </div>
+
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {formatMetric(
+                              result.accuracy
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {formatMetric(
+                              result.precision
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4">
+                            {formatMetric(
+                              result.recall
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4 font-semibold">
+                            {formatMetric(
+                              result.f1_score
+                            )}
+                          </td>
+
+                        </tr>
+
+                      )
+                    )}
+
+                  </tbody>
+
+                </table>
+
+              </div>
+
+            </div>
+
+          ) : (
+
+            <div className="mt-6 rounded-lg border border-dashed border-border p-8 text-center">
+
+              <p className="font-medium">
+                No AutoML results yet
+              </p>
+
+              <p className="mt-2 text-sm text-muted">
+                Select a target and run AutoML
+                to compare models.
+              </p>
+
+            </div>
+
+          )}
+
+        </div>
+
+      </section>
+
+
+      {/* ===================================================== */}
+      {/* AI INSIGHTS */}
+      {/* ===================================================== */}
+
+      <section>
+
+        <div className="mb-6">
+
+          <p className="text-sm font-medium text-muted">
+            Intelligent Analysis
+          </p>
+
+          <h2 className="mt-1 text-2xl font-bold">
+            🧠 AI Insights
+          </h2>
+
+          <p className="mt-2 text-muted">
+            Convert the analytical results into
+            understandable, actionable insights.
+          </p>
+
+        </div>
+
+        <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">
+
+          {!aiInsights ? (
+
+            <div className="text-center">
+
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-background text-3xl">
+                🧠
+              </div>
+
+              <h3 className="mt-4 text-xl font-semibold">
+                Generate Dataset Insights
+              </h3>
+
+              <p className="mx-auto mt-2 max-w-2xl text-sm text-muted">
+                InsightForgeAI will analyze the
+                results already calculated by Python
+                and turn them into a human-readable
+                analytical summary.
+              </p>
+
+              <button
+                type="button"
+                onClick={
+                  handleLoadAIInsights
+                }
+                disabled={isLoadingAI}
+                className="mt-6 rounded-lg bg-foreground px-6 py-3 font-semibold text-background transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isLoadingAI
+                  ? "Generating Insights..."
+                  : "Generate AI Insights"}
+              </button>
+
+              {aiError ? (
+
+                <div className="mx-auto mt-5 max-w-2xl rounded-lg border border-red-200 bg-red-50 p-4 text-left text-sm text-red-700">
+                  {aiError}
+                </div>
+
+              ) : null}
+
+            </div>
+
+          ) : (
+
+            <div>
+
+              <div className="mb-6 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-center sm:justify-between">
+
+                <div>
+
+                  <h3 className="text-xl font-bold">
+                    Dataset Analysis
+                  </h3>
+
+                  <p className="mt-1 text-sm text-muted">
+                    Generated from the calculated
+                    dataset statistics and findings.
+                  </p>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={
+                    handleLoadAIInsights
+                  }
+                  disabled={isLoadingAI}
+                  className="rounded-lg border border-border px-4 py-2 text-sm font-semibold transition hover:bg-background disabled:opacity-50"
+                >
+                  {isLoadingAI
+                    ? "Refreshing..."
+                    : "Refresh Insights"}
+                </button>
+
+              </div>
+
+
+              <div className="space-y-7">
+
+                {aiInsights
+                  .split(
+                    /\n(?=## )/
+                  )
+                  .map(
+                    (section, index) => {
+
+                      const lines =
+                        section.trim().split(
+                          "\n"
+                        );
+
+                      const heading =
+                        lines[0]
+                          ?.replace(
+                            /^##\s*/,
+                            ""
+                          )
+                          .trim();
+
+                      const body =
+                        lines
+                          .slice(1)
+                          .join("\n")
+                          .trim();
+
+                      return (
+
+                        <div
+                          key={index}
+                          className="rounded-xl border border-border bg-background p-5"
+                        >
+
+                          <h4 className="text-lg font-bold">
+                            {heading}
+                          </h4>
+
+                          <div className="mt-3 space-y-2 text-sm leading-7 text-muted">
+
+                            {body
+                              .split("\n")
+                              .map(
+                                (
+                                  line,
+                                  lineIndex
+                                ) => {
+
+                                  const trimmed =
+                                    line.trim();
+
+                                  if (
+                                    !trimmed
+                                  ) {
+                                    return null;
+                                  }
+
+                                  if (
+                                    trimmed.startsWith(
+                                      "-"
+                                    )
+                                  ) {
+                                    return (
+                                      <div
+                                        key={
+                                          lineIndex
+                                        }
+                                        className="flex gap-3"
+                                      >
+                                        <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-foreground" />
+
+                                        <span>
+                                          {trimmed.replace(
+                                            /^-\s*/,
+                                            ""
+                                          )}
+                                        </span>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <p
+                                      key={
+                                        lineIndex
+                                      }
+                                    >
+                                      {trimmed}
+                                    </p>
+                                  );
+                                }
+                              )}
+
+                          </div>
+
+                        </div>
+
+                      );
+                    }
+                  )}
+
+              </div>
+
+            </div>
+
+          )}
+
+        </div>
+
+      </section>
+
+
+      {/* ===================================================== */}
+      {/* COLUMN INFORMATION */}
+      {/* ===================================================== */}
+
+      <section>
+
+        <h2 className="mb-4 text-2xl font-bold">
+          Column Information
+        </h2>
+
+        <div className="overflow-x-auto rounded-xl border border-border bg-card">
+
+          <table className="w-full text-left">
+
+            <thead className="border-b border-border">
+
+              <tr>
+
+                <th className="px-6 py-4">
+                  Column
+                </th>
+
+                <th className="px-6 py-4">
+                  Data Type
+                </th>
+
+                <th className="px-6 py-4">
+                  Unique Values
+                </th>
+
+              </tr>
+
+            </thead>
+
+            <tbody>
+
+              {profile.column_names.map(
+                (column) => (
+
+                  <tr
+                    key={column}
+                    className="border-b border-border last:border-0"
+                  >
+
+                    <td className="px-6 py-4 font-medium">
+                      {column}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {profile.data_types[column]}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {profile.unique_values[column]}
+                    </td>
+
+                  </tr>
+
+                )
+              )}
+
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </section>
+
+
+      {/* ===================================================== */}
+      {/* NEXT ANALYSIS MODULES */}
+      {/* ===================================================== */}
+
+      <section>
+
+        <h2 className="mb-4 text-2xl font-bold">
+          Next Analysis Modules
+        </h2>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+          <FutureModule
+            title="Explainability"
+            description="Understand which features influence model predictions."
+          />
+
+          <FutureModule
+            title="Prediction"
+            description="Use the trained model to generate predictions for new data."
+          />
+
+          <FutureModule
+            title="PDF Report"
+            description="Generate a downloadable professional analytical report."
+          />
+
+          <FutureModule
+            title="Deployment"
+            description="Deploy the complete InsightForgeAI platform for real users."
+          />
+
+        </div>
+
+      </section>
 
     </div>
   );
 }
 
 
-// ============================================================
-// STAT CARD
-// ============================================================
+/* ========================================================= */
+/* HELPER COMPONENTS */
+/* ========================================================= */
 
 function StatCard({
   label,
@@ -2326,9 +2161,8 @@ function StatCard({
   label: string;
   value: string | number;
 }) {
-
   return (
-    <div className="rounded-2xl border border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-5">
 
       <p className="text-sm text-muted">
         {label}
@@ -2343,62 +2177,19 @@ function StatCard({
 }
 
 
-// ============================================================
-// SECTION TITLE
-// ============================================================
-
-function SectionTitle({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
-
-  return (
-    <div className="mb-5">
-
-      <h2 className="text-2xl font-bold">
-        {title}
-      </h2>
-
-      <p className="mt-1 text-sm text-muted">
-        {description}
-      </p>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// DASHBOARD CARD
-// ============================================================
-
 function DashboardCard({
   title,
-  description,
   children,
 }: {
   title: string;
-  description?: string;
   children: React.ReactNode;
 }) {
-
   return (
-    <div className="rounded-2xl border border-border bg-card p-6">
+    <div className="rounded-xl border border-border bg-card p-6">
 
-      <h3 className="text-lg font-semibold">
+      <h3 className="mb-5 text-lg font-semibold">
         {title}
       </h3>
-
-      {description && (
-
-        <p className="mt-1 text-sm text-muted">
-          {description}
-        </p>
-
-      )}
 
       {children}
 
@@ -2406,10 +2197,6 @@ function DashboardCard({
   );
 }
 
-
-// ============================================================
-// MINI METRIC
-// ============================================================
 
 function MiniMetric({
   label,
@@ -2418,15 +2205,14 @@ function MiniMetric({
   label: string;
   value: string | number;
 }) {
-
   return (
-    <div className="rounded-xl border border-border bg-muted/5 p-4">
+    <div className="rounded-lg border border-border bg-background p-4">
 
       <p className="text-xs text-muted">
         {label}
       </p>
 
-      <p className="mt-1 text-lg font-bold">
+      <p className="mt-1 font-semibold">
         {value}
       </p>
 
@@ -2435,134 +2221,55 @@ function MiniMetric({
 }
 
 
-// ============================================================
-// BADGE
-// ============================================================
-
-function Badge({
-  children,
-  variant = "info",
-}: {
-  children: React.ReactNode;
-
-  variant?:
-    | "info"
-    | "warning"
-    | "positive"
-    | "negative";
-}) {
-
-  const styles = {
-
-    info:
-      "bg-blue-500/10 text-blue-500",
-
-    warning:
-      "bg-amber-500/10 text-amber-500",
-
-    positive:
-      "bg-green-500/10 text-green-500",
-
-    negative:
-      "bg-red-500/10 text-red-500",
-
-  };
-
-
-  return (
-    <span
-      className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${styles[variant]}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-
-// ============================================================
-// EMPTY MESSAGE
-// ============================================================
-
-function EmptyMessage({
-  text,
-}: {
-  text: string;
-}) {
-
-  return (
-    <div className="mt-5 rounded-xl bg-muted/10 p-4">
-
-      <p className="text-sm text-muted">
-        {text}
-      </p>
-
-    </div>
-  );
-}
-
-
-// ============================================================
-// FINDING CARD
-// ============================================================
-
 function FindingCard({
   finding,
 }: {
   finding: Finding;
 }) {
+  const type = finding.type.toLowerCase();
 
-  const styles = {
+  let badgeClass =
+    "bg-slate-100 text-slate-700";
 
-    critical:
-      "border-red-500/20 bg-red-500/5",
-
-    warning:
-      "border-amber-500/20 bg-amber-500/5",
-
-    info:
-      "border-blue-500/20 bg-blue-500/5",
-
-    positive:
-      "border-green-500/20 bg-green-500/5",
-
-    negative:
-      "border-red-500/20 bg-red-500/5",
-
-  };
-
-
-  const labels = {
-
-    critical: "Critical",
-
-    warning: "Warning",
-
-    info: "Info",
-
-    positive: "Positive",
-
-    negative: "Negative",
-
-  };
-
+  if (type === "critical") {
+    badgeClass =
+      "bg-red-100 text-red-700";
+  } else if (type === "warning") {
+    badgeClass =
+      "bg-amber-100 text-amber-700";
+  } else if (
+    type === "positive"
+  ) {
+    badgeClass =
+      "bg-emerald-100 text-emerald-700";
+  } else if (
+    type === "negative"
+  ) {
+    badgeClass =
+      "bg-red-100 text-red-700";
+  } else if (
+    type === "info"
+  ) {
+    badgeClass =
+      "bg-blue-100 text-blue-700";
+  }
 
   return (
-    <div
-      className={`rounded-2xl border p-5 ${styles[finding.type]}`}
-    >
+    <div className="rounded-xl border border-border bg-card p-5">
 
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-start justify-between gap-4">
 
         <h3 className="font-semibold">
           {finding.title}
         </h3>
 
-        <span className="rounded-full bg-background/70 px-2.5 py-1 text-xs font-medium">
-          {labels[finding.type]}
+        <span
+          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass}`}
+        >
+          {finding.type}
         </span>
 
       </div>
-
 
       <p className="mt-3 text-sm leading-6 text-muted">
         {finding.message}
@@ -2573,10 +2280,6 @@ function FindingCard({
 }
 
 
-// ============================================================
-// FUTURE MODULE
-// ============================================================
-
 function FutureModule({
   title,
   description,
@@ -2584,39 +2287,30 @@ function FutureModule({
   title: string;
   description: string;
 }) {
-
   return (
-    <div className="rounded-2xl border border-dashed border-border bg-card p-5">
+    <div className="rounded-xl border border-border bg-card p-6">
 
-      <div className="flex items-center justify-between">
+      <h3 className="font-semibold">
+        {title}
+      </h3>
 
-        <h3 className="font-semibold">
-          {title}
-        </h3>
-
-        <span className="rounded-full bg-muted/20 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
-          Coming Next
-        </span>
-
-      </div>
-
-
-      <p className="mt-3 text-sm leading-6 text-muted">
+      <p className="mt-2 text-sm text-muted">
         {description}
       </p>
+
+      <span className="mt-4 inline-block text-sm font-medium">
+        Coming next
+      </span>
 
     </div>
   );
 }
 
 
-// ============================================================
-// FORMAT METRIC
-// ============================================================
-
 function formatMetric(
   value: number
 ) {
-
-  return `${(value * 100).toFixed(2)}%`;
+  return `${(
+    Number(value) * 100
+  ).toFixed(2)}%`;
 }
